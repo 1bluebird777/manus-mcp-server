@@ -30,6 +30,20 @@ const server = new Server(
 // Tool definitions
 const TOOLS = [
   {
+    name: "validate_address",
+    description: "Validate and format an address using Google Maps. Returns the complete formatted address, coordinates, and whether the address is valid. Use this BEFORE accepting any pickup or destination address from the customer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: {
+          type: "string",
+          description: "The address to validate (can be partial)",
+        },
+      },
+      required: ["address"],
+    },
+  },
+  {
     name: "create_task",
     description: "Create a development task for Manus AI to execute. Use this when you need to build features, fix bugs, or make changes to the BluebirdX codebase.",
     inputSchema: {
@@ -115,6 +129,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      case "validate_address":
+        // Validate address using BluebirdX Maps API
+        try {
+          // Call the BluebirdX tRPC Maps endpoint
+          const response = await fetch('https://3000-ii9186swennxy0bd1alpz-ffae60b9.manusvm.computer/api/trpc/maps.geocode?input=' + encodeURIComponent(JSON.stringify({ address: args.address })));
+          const data = await response.json();
+          
+          if (data.result?.data?.success) {
+            const result = data.result.data;
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `✅ Address validated!\n\nFormatted Address: ${result.formattedAddress}\nCoordinates: ${result.location.lat}, ${result.location.lng}\n\nThis is a valid, complete address.`,
+                },
+              ],
+            };
+          } else {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `⚠️ Address not found or invalid: "${args.address}"\n\nPlease ask the customer for a more complete address with street number, street name, city, and postal code.`,
+                },
+              ],
+            };
+          }
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `⚠️ Could not validate address: ${error.message}\n\nPlease ask the customer to provide a complete address.`,
+              },
+            ],
+          };
+        }
+
       case "create_task":
         // Create a real task file in the BluebirdX project
         const taskId = `TASK-${Date.now()}`;
