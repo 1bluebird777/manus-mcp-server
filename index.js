@@ -130,19 +130,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "validate_address":
-        // Validate address using BluebirdX Maps API
+        // Validate address using BluebirdX REST API
         try {
-          // Call the BluebirdX tRPC Maps endpoint
-          const response = await fetch('https://3000-ii9186swennxy0bd1alpz-ffae60b9.manusvm.computer/api/trpc/maps.geocode?input=' + encodeURIComponent(JSON.stringify({ address: args.address })));
+          // Call the BluebirdX MCP REST endpoint
+          const response = await fetch('https://3000-ii9186swennxy0bd1alpz-ffae60b9.manusvm.computer/api/mcp/validate-address', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ address: args.address }),
+          });
           const data = await response.json();
           
-          if (data.result?.data?.success) {
-            const result = data.result.data;
+          if (data.success) {
             return {
               content: [
                 {
                   type: "text",
-                  text: `✅ Address validated!\n\nFormatted Address: ${result.formattedAddress}\nCoordinates: ${result.location.lat}, ${result.location.lng}\n\nThis is a valid, complete address.`,
+                  text: `✅ Address validated!\n\nFormatted Address: ${data.formattedAddress}\nCoordinates: ${data.location.lat}, ${data.location.lng}\n\nThis is a valid, complete address.`,
                 },
               ],
             };
