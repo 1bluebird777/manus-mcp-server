@@ -226,7 +226,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               
               // Get relevant excerpt (first 500 chars)
               const excerpt = content.substring(0, 500);
-              contextText += `\n📄 ${firstFile}:\n```\n${excerpt}...\n```\n\n`;
+              contextText += `\n📄 ${firstFile}:\n\`\`\`\n${excerpt}...\n\`\`\`\n\n`;
               
               if (files.length > 1) {
                 contextText += `Also found in: ${files.slice(1, 5).join(', ')}\n`;
