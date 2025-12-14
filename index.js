@@ -164,13 +164,9 @@ app.get("/sse", async (req, res) => {
     // Create SSE transport with /messages endpoint
     const transport = new SSEServerTransport("/messages", res);
     
-    // Connect server to transport FIRST
+    // Connect server to transport (this automatically calls start())
     await server.connect(transport);
-    console.log("✅ MCP server connected to transport");
-    
-    // THEN start the SSE stream - this sends the endpoint event
-    await transport.start();
-    console.log(`✅ SSE stream started (session: ${transport.sessionId})`);
+    console.log(`✅ MCP server connected via SSE (session: ${transport.sessionId})`);
     
     // Store transport by session ID
     transports.set(transport.sessionId, transport);
@@ -193,8 +189,8 @@ app.get("/sse", async (req, res) => {
 app.post("/messages", async (req, res) => {
   const sessionId = req.query.sessionId;
   
-  console.log(`📨 Message received for session: ${sessionId}`);
-  console.log(`📋 Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`📨 POST /messages?sessionId=${sessionId}`);
+  console.log(`📋 Method: ${req.body.method}`);
   
   if (!sessionId) {
     console.error("❌ No sessionId in query");
@@ -209,9 +205,7 @@ app.post("/messages", async (req, res) => {
   }
   
   try {
-    console.log(`✅ Routing message to transport`);
     await transport.handlePostMessage(req, res);
-    console.log(`✅ Message handled successfully`);
   } catch (error) {
     console.error(`❌ Error handling message:`, error);
     if (!res.headersSent) {
