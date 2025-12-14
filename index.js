@@ -77,7 +77,7 @@ const server = new Server(
 const TOOLS = [
   {
     name: "process_booking_info",
-    description: "Process natural language booking information from user. Extracts pickup location, destination, date, time, vehicle type, and passenger count from conversational text. Validates addresses using Google Maps (rejects vague addresses like 'Manhattan' - requires complete street addresses). Returns validation_errors array if addresses are incomplete. Use this as the PRIMARY tool for collecting booking information. When validation_errors are returned, ask the user for complete street addresses.",
+    description: "MANDATORY: Call this tool IMMEDIATELY when user provides ANY booking information (location, time, date, passengers). Extracts and validates ALL booking fields from natural language. Validates addresses with Google Maps API - rejects fake addresses (e.g., '1 Cook New York', '2 Fake Street') and vague addresses (e.g., 'Manhattan'). Returns validation_errors array if addresses fail Google Maps validation. YOU MUST call this tool for EVERY booking - do NOT accept addresses without calling this tool first. When validation_errors exist, ask user for correct address and call this tool again.",
     inputSchema: {
       type: "object",
       properties: {
