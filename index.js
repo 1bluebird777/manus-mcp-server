@@ -7,8 +7,54 @@ import {
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import http from "http";
+import https from "https";
 
 dotenv.config();
+
+// HTTP Agent for connection pooling (reuse connections)
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 10000,
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 10000,
+});
+
+// Simple in-memory cache for address validation (5 minute TTL)
+const addressCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCachedAddress(address) {
+  const cached = addressCache.get(address.toLowerCase());
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+}
+
+function setCachedAddress(address, data) {
+  addressCache.set(address.toLowerCase(), {
+    data,
+    timestamp: Date.now(),
+  });
+  // Clean up old entries (simple LRU)
+  if (addressCache.size > 100) {
+    const firstKey = addressCache.keys().next().value;
+    addressCache.delete(firstKey);
+  }
+}
+
+// BluebirdX API URL from environment or default
+const BLUEBIRD_API_URL = process.env.BLUEBIRD_API_URL || 'https://3000-ii9186swennxy0bd1alpz-ffae60b9.manusvm.computer';
 
 const app = express();
 app.use(cors());
@@ -132,18 +178,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "validate_address":
         // Validate address using BluebirdX REST API
         try {
-          // Call the BluebirdX MCP REST endpoint
-          const response = await fetch('https://3000-ii9186swennxy0bd1alpz-ffae60b9.manusvm.computer/api/mcp/validate-address', {
+          const startTime = Date.now();
+          
+          // Check cache first
+          const cached = getCachedAddress(args.address);
+          if (cached) {
+            console.log(`✅ Cache hit for "${args.address}" (${Date.now() - startTime}ms)`);
+            return cached;
+          }
+          
+          // Call the BluebirdX MCP REST endpoint with optimized fetch
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+          
+          const response = await fetch(`${BLUEBIRD_API_URL}/api/mcp/validate-address`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'Connection': 'keep-alive',
             },
             body: JSON.stringify({ address: args.address }),
+            signal: controller.signal,
+            agent: BLUEBIRD_API_URL.startsWith('https') ? httpsAgent : httpAgent,
           });
+          
+          clearTimeout(timeoutId);
           const data = await response.json();
+          const elapsed = Date.now() - startTime;
+          console.log(`⏱️  Address validation took ${elapsed}ms for "${args.address}"`);
           
           if (data.success) {
-            return {
+            const result = {
               content: [
                 {
                   type: "text",
@@ -151,6 +216,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 },
               ],
             };
+            // Cache successful validation
+            setCachedAddress(args.address, result);
+            return result;
           } else {
             return {
               content: [
