@@ -214,7 +214,17 @@ app.post("/messages", async (req, res) => {
   }
   
   try {
-    await transport.handlePostMessage(req, res);
+    // The body has already been parsed by express.json()
+    // So we need to handle it manually instead of letting the SDK read the stream
+    const message = req.body;
+    console.log('📥 Received message:', JSON.stringify(message, null, 2));
+    
+    // Send the message to the MCP server for processing
+    const response = await server.handleRequest(message);
+    console.log('📤 Sending response:', JSON.stringify(response, null, 2));
+    
+    // Send the response back
+    res.json(response);
   } catch (error) {
     console.error(`❌ Error handling message:`, error);
     if (!res.headersSent) {
