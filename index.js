@@ -255,21 +255,34 @@ app.get("/sse", async (req, res) => {
     // Create transport with /messages endpoint (note: plural)
     const transport = new SSEServerTransport("/messages", res);
     
+    // Store transport immediately with a temporary key
+    // The sessionId will be available after the endpoint event is sent
+    const tempId = `temp_${Date.now()}`;
+    transportMap.set(tempId, transport);
+    
     // Connect MCP server to transport
     await server.connect(transport);
     
-    // Store transport by session ID
-    transportMap.set(transport.sessionId, transport);
-    
-    console.log(`✅ MCP server connected via SSE (session: ${transport.sessionId})`);
+    // After connection, the sessionId is available
+    // Update the map with the actual sessionId
+    transportMap.delete(tempId);
+    if (transport.sessionId) {
+      transportMap.set(transport.sessionId, transport);
+      console.log(`✅ MCP server connected via SSE (session: ${transport.sessionId})`);
+    } else {
+      console.error("❌ No sessionId available after connection");
+    }
     
     // Handle client disconnect
     req.on('close', () => {
-      console.log(`🔌 SSE connection closed (session: ${transport.sessionId})`);
-      transportMap.delete(transport.sessionId);
+      if (transport.sessionId) {
+        console.log(`🔌 SSE connection closed (session: ${transport.sessionId})`);
+        transportMap.delete(transport.sessionId);
+      }
     });
   } catch (error) {
     console.error("❌ SSE connection error:", error);
+    console.error("Error stack:", error.stack);
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     }
