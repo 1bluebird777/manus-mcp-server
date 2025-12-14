@@ -87,6 +87,15 @@ const TOOLS = [
   },
 ];
 
+// Log all messages for debugging
+server.onmessage = (message) => {
+  console.log('📥 MCP message received:', JSON.stringify(message, null, 2));
+};
+
+server.onerror = (error) => {
+  console.error('❌ MCP server error:', error);
+};
+
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   console.log("🔧 Sending tools list:", JSON.stringify(TOOLS, null, 2));
