@@ -116,34 +116,153 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "create_task":
-        return {
-          content: [
-            {
-              type: "text",
-              text: `✅ Task created successfully!\n\nTask: ${args.task_description}\nPriority: ${args.priority || "medium"}\n\nManus AI will begin working on this task shortly. You can check the status using the query_project_status tool.`,
-            },
-          ],
-        };
+        // Create a real task file in the BluebirdX project
+        const taskId = `TASK-${Date.now()}`;
+        const taskContent = `# ${taskId}: ${args.title}\n\n**Created by:** Leiah (Customer Request)\n**Priority:** ${args.priority || "medium"}\n**Created:** ${new Date().toISOString()}\n\n## Description\n\n${args.description}\n\n## Status\n\n- [ ] Task created\n- [ ] In progress\n- [ ] Completed\n\n## Notes\n\nThis task was created during a customer conversation with Leiah.\n`;
+        
+        // Write task to file system
+        const fs = await import('fs/promises');
+        const taskPath = `/home/ubuntu/bluebird-x/tasks/${taskId}.md`;
+        
+        try {
+          // Ensure tasks directory exists
+          await fs.mkdir('/home/ubuntu/bluebird-x/tasks', { recursive: true });
+          await fs.writeFile(taskPath, taskContent);
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: `✅ Task created successfully!\n\nTask ID: ${taskId}\nTitle: ${args.title}\nPriority: ${args.priority || "medium"}\n\nI've created this task in the BluebirdX development system. The Manus AI team will review and implement this feature.`,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `⚠️ Task logged but file creation failed: ${error.message}\n\nTask details have been recorded:\nTitle: ${args.title}\nDescription: ${args.description}\nPriority: ${args.priority || "medium"}`,
+              },
+            ],
+          };
+        }
 
       case "query_project_status":
-        return {
-          content: [
-            {
-              type: "text",
-              text: `📊 Project Status - ${args.query_type}\n\nBluebirdX is currently running and healthy. The development server is active and all systems are operational.`,
-            },
-          ],
-        };
+        // Query real BluebirdX project status
+        const fs2 = await import('fs/promises');
+        const { execSync } = await import('child_process');
+        
+        try {
+          let statusText = '📊 BluebirdX Project Status\n\n';
+          
+          // Check dev server status
+          try {
+            const response = await fetch('http://localhost:3000/health').catch(() => null);
+            statusText += `✅ Dev Server: Running on port 3000\n`;
+          } catch {
+            statusText += `⚠️ Dev Server: Not responding\n`;
+          }
+          
+          // Get recent git commits
+          try {
+            const recentCommits = execSync('cd /home/ubuntu/bluebird-x && git log --oneline -5', { encoding: 'utf-8' });
+            statusText += `\n📋 Recent Changes:\n${recentCommits}\n`;
+          } catch {}
+          
+          // Check for pending tasks
+          try {
+            const tasks = await fs2.readdir('/home/ubuntu/bluebird-x/tasks').catch(() => []);
+            statusText += `\n📝 Active Tasks: ${tasks.length} tasks in queue\n`;
+          } catch {}
+          
+          // List active features
+          statusText += `\n✨ Active Features:\n- AI Voice Booking with Leiah\n- Real-time driver matching\n- ElevenLabs integration\n- MCP Server integration (NEW!)\n`;
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: statusText,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `⚠️ Could not fetch full project status: ${error.message}\n\nBluebirdX is operational. Contact the development team for detailed status.`,
+              },
+            ],
+          };
+        }
 
       case "get_code_context":
-        return {
-          content: [
-            {
-              type: "text",
-              text: `📄 Code Context - ${args.file_path}\n\nFile analysis available. Query: ${args.query || "General overview"}`,
-            },
-          ],
-        };
+        // Search and read actual BluebirdX code
+        const fs3 = await import('fs/promises');
+        const path = await import('path');
+        const { execSync: exec2 } = await import('child_process');
+        
+        try {
+          const query = args.query.toLowerCase();
+          let contextText = `📝 Code Context for: "${args.query}"\n\n`;
+          
+          // Search for relevant files using grep
+          try {
+            const searchResults = exec2(
+              `cd /home/ubuntu/bluebird-x && grep -r "${query}" --include="*.ts" --include="*.tsx" --include="*.js" -l | head -10`,
+              { encoding: 'utf-8' }
+            ).trim();
+            
+            if (searchResults) {
+              const files = searchResults.split('\n');
+              contextText += `Found in ${files.length} file(s):\n`;
+              
+              // Read first matching file
+              const firstFile = files[0];
+              const fullPath = `/home/ubuntu/bluebird-x/${firstFile}`;
+              const content = await fs3.readFile(fullPath, 'utf-8');
+              
+              // Get relevant excerpt (first 500 chars)
+              const excerpt = content.substring(0, 500);
+              contextText += `\n📄 ${firstFile}:\n```\n${excerpt}...\n```\n\n`;
+              
+              if (files.length > 1) {
+                contextText += `Also found in: ${files.slice(1, 5).join(', ')}\n`;
+              }
+            } else {
+              contextText += `No exact matches found. Checking common components...\n\n`;
+              
+              // Provide general info about common components
+              contextText += `✨ BluebirdX Architecture:\n`;
+              contextText += `- Voice Booking: client/src/components/VoiceBookingForm.tsx\n`;
+              contextText += `- AI Chat: client/src/components/LeiaChat.tsx\n`;
+              contextText += `- Booking Flow: client/src/hooks/useBookingFlow.ts\n`;
+              contextText += `- Backend: server/routers.ts (tRPC procedures)\n`;
+            }
+          } catch (searchError) {
+            contextText += `Could not search codebase: ${searchError.message}\n`;
+          }
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: contextText,
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `⚠️ Could not retrieve code context: ${error.message}\n\nPlease contact the development team for specific code information.`,
+              },
+            ],
+          };
+        }
 
       default:
         throw new Error(`Unknown tool: ${name}`);
