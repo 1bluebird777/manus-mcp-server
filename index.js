@@ -215,16 +215,12 @@ app.post("/messages", async (req, res) => {
   
   try {
     // The body has already been parsed by express.json()
-    // So we need to handle it manually instead of letting the SDK read the stream
+    // Pass it as the third parameter to handlePostMessage
     const message = req.body;
     console.log('📥 Received message:', JSON.stringify(message, null, 2));
     
-    // Send the message to the MCP server for processing
-    const response = await server.handleRequest(message);
-    console.log('📤 Sending response:', JSON.stringify(response, null, 2));
-    
-    // Send the response back
-    res.json(response);
+    // Handle the POST message with the transport, passing the parsed body
+    await transport.handlePostMessage(req, res, req.body);
   } catch (error) {
     console.error(`❌ Error handling message:`, error);
     if (!res.headersSent) {
