@@ -76,8 +76,34 @@ const server = new Server(
 // Tool definitions
 const TOOLS = [
   {
+    name: "process_booking_info",
+    description: "Process natural language booking information from user. Extracts pickup location, destination, date, time, vehicle type, and passenger count from conversational text. Validates addresses, parses dates/times, and provides smart suggestions. Use this as the PRIMARY tool for collecting booking information.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        user_message: {
+          type: "string",
+          description: "The user's natural language message (e.g., 'Pick me up at 643 ENT Ave tomorrow at 3pm, going to JFK with 4 passengers')",
+        },
+        current_booking: {
+          type: "object",
+          description: "Current booking state (optional, for context)",
+          properties: {
+            pickup_location: { type: "string" },
+            destination: { type: "string" },
+            date: { type: "string" },
+            time: { type: "string" },
+            vehicle_type: { type: "string" },
+            passenger_count: { type: "number" },
+          },
+        },
+      },
+      required: ["user_message"],
+    },
+  },
+  {
     name: "validate_address",
-    description: "Validate and format an address using Google Maps. Returns the complete formatted address, coordinates, and whether the address is valid. Use this BEFORE accepting any pickup or destination address from the customer.",
+    description: "Validate and format a specific address using Google Maps. Returns the complete formatted address and coordinates. Use this for standalone address validation when not part of a full booking flow.",
     inputSchema: {
       type: "object",
       properties: {
@@ -175,6 +201,88 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
+      case "process_booking_info":
+        // Process natural language booking information
+        try {
+          const startTime = Date.now();
+          
+          // Call the BluebirdX MCP REST endpoint for NLP processing
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout for NLP
+          
+          const response = await fetch(`${BLUEBIRD_API_URL}/api/mcp/process-booking`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Connection': 'keep-alive',
+            },
+            body: JSON.stringify({
+              user_message: args.user_message,
+              current_booking: args.current_booking || {},
+            }),
+            signal: controller.signal,
+            agent: BLUEBIRD_API_URL.startsWith('https') ? httpsAgent : httpAgent,
+          });
+          
+          clearTimeout(timeoutId);
+          const data = await response.json();
+          const elapsed = Date.now() - startTime;
+          console.log(`⏱️  Booking processing took ${elapsed}ms for "${args.user_message}"`);
+          
+          if (data.success) {
+            // Format extracted fields for Leiah
+            const fields = data.extracted_fields;
+            let summary = "📋 Extracted booking information:\n\n";
+            
+            if (fields.pickup_location) summary += `📍 Pickup: ${fields.pickup_location}\n`;
+            if (fields.destination) summary += `🎯 Destination: ${fields.destination}\n`;
+            if (fields.date) summary += `📅 Date: ${fields.date}\n`;
+            if (fields.time) summary += `🕐 Time: ${fields.time}\n`;
+            if (fields.vehicle_type) summary += `🚗 Vehicle: ${fields.vehicle_type}\n`;
+            if (fields.passenger_count) summary += `👥 Passengers: ${fields.passenger_count}\n`;
+            
+            if (data.suggestions && Object.keys(data.suggestions).length > 0) {
+              summary += "\n💡 Suggestions:\n";
+              if (data.suggestions.vehicle_type) summary += `  - Recommended vehicle: ${data.suggestions.vehicle_type}\n`;
+              if (data.suggestions.estimated_duration) summary += `  - Estimated duration: ${data.suggestions.estimated_duration}\n`;
+              if (data.suggestions.estimated_price) summary += `  - Estimated price: ${data.suggestions.estimated_price}\n`;
+            }
+            
+            if (data.confirmation_message) {
+              summary += `\n✅ ${data.confirmation_message}`;
+            }
+            
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: summary,
+                },
+              ],
+            };
+          } else {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `⚠️ Could not extract booking information from: "${args.user_message}"\n\nError: ${data.error || 'Unknown error'}`,
+                },
+              ],
+            };
+          }
+        } catch (error) {
+          console.error('❌ Error processing booking:', error);
+          return {
+            content: [
+              {
+                type: "text",
+                text: `❌ Error processing booking information: ${error.message}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
       case "validate_address":
         // Validate address using BluebirdX REST API
         try {
