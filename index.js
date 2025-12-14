@@ -89,9 +89,12 @@ const TOOLS = [
 
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
+  console.log("🔧 Sending tools list:", JSON.stringify(TOOLS, null, 2));
+  const response = {
     tools: TOOLS,
   };
+  console.log("📤 Tools list response:", JSON.stringify(response, null, 2));
+  return response;
 });
 
 // Handle tool calls
@@ -292,6 +295,8 @@ app.get("/sse", async (req, res) => {
 // Message endpoint for SSE (note: plural /messages)
 app.post("/messages", async (req, res) => {
   console.log("📨 Message received:", JSON.stringify(req.body, null, 2));
+  console.log("🔍 Request query:", req.query);
+  console.log("🔍 Request headers:", JSON.stringify(req.headers, null, 2));
   
   const sessionId = req.query.sessionId;
   
