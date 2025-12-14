@@ -1,5 +1,5 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -7,7 +7,6 @@ import {
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { randomUUID } from "node:crypto";
 
 dotenv.config();
 
@@ -157,38 +156,64 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Track transports by session ID
 const transports = new Map();
 
-// MCP endpoint - handles both SSE and POST requests
-app.all("/sse", async (req, res) => {
-  console.log(`📡 ${req.method} request to /sse`);
+// SSE endpoint
+app.get("/sse", async (req, res) => {
+  console.log("📡 SSE connection request received");
   
   try {
-    const sessionId = req.headers['mcp-session-id'];
+    // Create SSE transport with /messages endpoint
+    const transport = new SSEServerTransport("/messages", res);
     
-    // Reuse existing transport or create new one
-    let transport = sessionId ? transports.get(sessionId) : undefined;
+    // Connect server to transport FIRST
+    await server.connect(transport);
+    console.log("✅ MCP server connected to transport");
     
-    if (!transport) {
-      console.log("🆕 Creating new transport");
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => {
-          console.log(`✅ Session initialized: ${id}`);
-          transports.set(id, transport);
-        },
-      });
-      
-      // Connect the MCP server to the transport
-      await server.connect(transport);
-      console.log("✅ MCP server connected to transport");
-    } else {
-      console.log(`♻️  Reusing existing transport for session: ${sessionId}`);
-    }
+    // THEN start the SSE stream - this sends the endpoint event
+    await transport.start();
+    console.log(`✅ SSE stream started (session: ${transport.sessionId})`);
     
-    // Handle the request
-    await transport.handleRequest(req, res, req.body);
+    // Store transport by session ID
+    transports.set(transport.sessionId, transport);
+    
+    // Handle client disconnect
+    req.on('close', () => {
+      console.log(`🔌 SSE connection closed (session: ${transport.sessionId})`);
+      transports.delete(transport.sessionId);
+    });
   } catch (error) {
-    console.error("❌ Error handling MCP request:", error);
+    console.error("❌ SSE connection error:", error);
     console.error("Error stack:", error.stack);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+});
+
+// Messages endpoint for POST requests
+app.post("/messages", async (req, res) => {
+  const sessionId = req.query.sessionId;
+  
+  console.log(`📨 Message received for session: ${sessionId}`);
+  console.log(`📋 Body:`, JSON.stringify(req.body, null, 2));
+  
+  if (!sessionId) {
+    console.error("❌ No sessionId in query");
+    return res.status(400).json({ error: 'sessionId is required' });
+  }
+  
+  const transport = transports.get(sessionId);
+  
+  if (!transport) {
+    console.error(`❌ No transport found for session: ${sessionId}`);
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  try {
+    console.log(`✅ Routing message to transport`);
+    await transport.handlePostMessage(req, res);
+    console.log(`✅ Message handled successfully`);
+  } catch (error) {
+    console.error(`❌ Error handling message:`, error);
     if (!res.headersSent) {
       res.status(500).json({ error: error.message });
     }
@@ -214,6 +239,7 @@ app.get("/", (req, res) => {
     description: "MCP server that enables Leiah to call Manus AI for real-time development",
     endpoints: {
       sse: "/sse",
+      messages: "/messages",
       health: "/health",
     },
     tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
@@ -222,11 +248,12 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-const HOST = '0.0.0.0'; // Bind to all interfaces for Railway
+const HOST = '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
   console.log(`🚀 Manus MCP Server running on ${HOST}:${PORT}`);
-  console.log(`📡 MCP endpoint: http://localhost:${PORT}/sse`);
+  console.log(`📡 SSE endpoint: http://localhost:${PORT}/sse`);
+  console.log(`📨 Messages endpoint: http://localhost:${PORT}/messages`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
 });
 
