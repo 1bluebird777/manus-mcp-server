@@ -344,10 +344,22 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
+const HOST = '0.0.0.0'; // Bind to all interfaces for Railway
 
-app.listen(PORT, () => {
-  console.log(`🚀 Manus MCP Server running on port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Manus MCP Server running on ${HOST}:${PORT}`);
   console.log(`📡 SSE endpoint: http://localhost:${PORT}/sse`);
   console.log(`📨 Messages endpoint: http://localhost:${PORT}/messages`);
   console.log(`❤️  Health check: http://localhost:${PORT}/health`);
+});
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('⚠️  SIGTERM received, closing server gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('⚠️  SIGINT received, closing server gracefully...');
+  process.exit(0);
 });
